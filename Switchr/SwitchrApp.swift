@@ -1,17 +1,12 @@
-//
-//  SwitchrApp.swift
-//  Switchr
-//
-//  Created by Yee Lok on 2026/05/08.
-//
-
-import SwiftUI
+import AppKit
 
 @main
-struct SwitchrApp: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
+enum SwitchrMain {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.accessory)
+        app.run()
     }
 }
