@@ -12,68 +12,73 @@ Text Input Sources (TIS) API directly to switch the source.
 
 ## Hotkey
 
-`Ctrl + Option + Space`
+Default: `Ctrl + Option + Space`. Reconfigurable from **Settings…**.
 
-- **Tap** (press and release within ~200ms): switch to the next source.
-- **Hold**: a centered overlay appears listing all selectable keyboard
-  sources. Each `Space` advances the highlight (wrap-around);
-  `Shift+Space` moves up. Release the modifiers to commit.
+- **Tap** (press and release within ~200ms): jump to the most-recently-used
+  input source. Tapping again jumps back — like ⌘Tab between apps. On the
+  very first tap after launch (no history yet) it falls back to the next
+  source in the list.
+- **Hold**: a centered overlay appears listing every selectable keyboard
+  source, with the most-recently-used one pre-highlighted. While holding:
+  - `Space` advances the highlight (wraps around).
+  - `Shift + Space` moves it the other way.
+  - Release the modifiers to commit the highlighted source.
 
-The hotkey is defined as a constant near the top of
-`Switchr/HotkeyMonitor.swift` — change it there if you need to.
+The history that drives "most-recently-used" is updated whenever the
+active input source changes, regardless of how it was triggered (Switchr,
+the system menu, globe key, another app). It is not persisted across
+launches.
+
+## Settings
+
+Open from the menu bar icon → **Settings…**.
+
+- **Switch input source** — record any shortcut. At least one of
+  ⌃ ⌥ ⌘ is required. ⇧ is reserved as the reverse-navigation modifier
+  while the hotkey is held, so it cannot be part of the binding itself.
+- **Launch Switchr at login** — registers the app with `SMAppService`.
+  After moving the app between locations (e.g. after running
+  `tools/install.sh` for the first time), un-tick and re-tick this so the
+  registration points at the new path.
+
+## Accessibility permission
+
+Switchr needs Accessibility permission to install the `CGEventTap` that
+captures the hotkey. On first launch it prompts you and offers to open
+the right pane. To grant manually:
+
+1. **System Settings → Privacy & Security → Accessibility**
+2. Toggle **Switchr** on (add it with `+` if it isn't listed).
+
+No relaunch needed — the app polls and picks up the new permission
+within ~1.5s.
+
+If something gets stuck, removing Switchr from the list and granting
+again usually fixes it.
 
 ## Build & run
 
-From the project root:
+From the project root, either open `Switchr.xcodeproj` in Xcode and ⌘R,
+or build from the command line:
 
 ```sh
 xcodebuild -project Switchr.xcodeproj -scheme Switchr -configuration Debug build
 open ~/Library/Developer/Xcode/DerivedData/Switchr-*/Build/Products/Debug/Switchr.app
 ```
 
-Or open `Switchr.xcodeproj` in Xcode and ⌘R.
+## Install
 
-## Accessibility permission
-
-Switchr needs Accessibility permission to install the `CGEventTap` that
-captures the hotkey. On first launch it will prompt you and offer to open
-the right pane. To grant it manually:
-
-1. **System Settings → Privacy & Security → Accessibility**
-2. Toggle **Switchr** on (add it with `+` if it isn't listed).
-3. Re-launch Switchr.
-
-If something gets stuck, removing Switchr from the list and granting again
-usually fixes it.
-
-## Finding input source IDs
-
-Each TIS source has a stable bundle-style identifier, e.g.
-`com.apple.keylayout.US` or `com.apple.inputmethod.SCIM.ITABC`. To list
-the IDs of every selectable keyboard source on your system:
+To build a Release copy and install it into `/Applications` (replacing
+any prior copy and relaunching):
 
 ```sh
-/usr/bin/python3 - <<'PY'
-from Carbon import TIS  # not actually a thing — use the TIS C API instead
-PY
+tools/install.sh
 ```
 
-…or, more practically, use a small Swift one-liner from a playground:
-
-```swift
-import Carbon
-let list = TISCreateInputSourceList(nil, false).takeRetainedValue() as! [TISInputSource]
-for src in list {
-    let idPtr = TISGetInputSourceProperty(src, kTISPropertyInputSourceID)
-    let namePtr = TISGetInputSourceProperty(src, kTISPropertyLocalizedName)
-    let id = Unmanaged<CFString>.fromOpaque(idPtr!).takeUnretainedValue() as String
-    let name = Unmanaged<CFString>.fromOpaque(namePtr!).takeUnretainedValue() as String
-    print("\(id)\t\(name)")
-}
-```
+After the first install from `/Applications`, re-grant Accessibility
+permission and re-tick **Launch at login** as described above.
 
 ## Scope
 
-Out of scope for now: preferences UI, per-app input source memory,
-launch-at-startup, animations beyond a simple fade. The hotkey is
-hardcoded.
+Out of scope for now: per-app input source memory, animations beyond a
+simple fade, persisted MRU history across launches.
