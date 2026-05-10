@@ -61,8 +61,9 @@ final class SwitcherController {
 
         switch mode {
         case .pendingTap:
-            // Released within threshold and only one Space press → legacy quick-switch.
-            InputSwitcher.advanceToNext()
+            // Released within threshold and only one Space press → jump back to
+            // the most-recently-used source (Cmd+Tab style).
+            InputSwitcher.selectMostRecentlyUsed()
         case .holdActive:
             if !sources.isEmpty {
                 let chosen = sources[selectedIndex]
@@ -82,9 +83,16 @@ final class SwitcherController {
         sources = InputSources.selectableKeyboardSources()
         let currentID = InputSources.currentKeyboardSource()?.id
         let currentIndex = sources.firstIndex { $0.id == currentID } ?? 0
-        // Pre-select the *next* source so committing immediately matches legacy
-        // "Space jumps to the next layout" behavior.
-        selectedIndex = wrap(currentIndex + 1)
+        // Pre-select the most-recently-used source so committing immediately
+        // matches the quick-tap behavior. Fall back to the next source when no
+        // history exists yet (first use after launch).
+        if let previousID = InputSourceHistory.shared.previousID,
+           let previousIndex = sources.firstIndex(where: { $0.id == previousID }),
+           previousIndex != currentIndex {
+            selectedIndex = previousIndex
+        } else {
+            selectedIndex = wrap(currentIndex + 1)
+        }
     }
 
     private func transitionToHold() {

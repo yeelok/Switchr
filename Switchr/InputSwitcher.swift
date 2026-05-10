@@ -11,6 +11,25 @@ enum InputSwitcher {
     @discardableResult
     static func retreatToPrevious() -> InputSource? { step(by: -1) }
 
+    /// Switch to the most-recently-used source if we have one recorded and it
+    /// is still selectable; otherwise fall back to advancing to the next.
+    @MainActor
+    @discardableResult
+    static func selectMostRecentlyUsed() -> InputSource? {
+        let sources = InputSources.selectableKeyboardSources()
+        guard sources.count > 1 else { return nil }
+
+        let currentID = InputSources.currentKeyboardSource()?.id
+        if let previousID = InputSourceHistory.shared.previousID,
+           previousID != currentID,
+           let target = sources.first(where: { $0.id == previousID }) {
+            InputSources.select(target)
+            return target
+        }
+
+        return advanceToNext()
+    }
+
     private static func step(by delta: Int) -> InputSource? {
         let sources = InputSources.selectableKeyboardSources()
         guard sources.count > 1 else { return nil }

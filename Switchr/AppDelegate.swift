@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMenuBarItem()
         wireHotkey()
+        InputSourceHistory.shared.startObserving()
         hotkey.start()
     }
 
@@ -47,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleNow() {
-        InputSwitcher.advanceToNext()
+        InputSwitcher.selectMostRecentlyUsed()
     }
 
     @objc private func openSettings() {
