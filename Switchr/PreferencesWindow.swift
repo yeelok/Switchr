@@ -1,13 +1,15 @@
 import AppKit
+import ServiceManagement
 
 @MainActor
 final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
     private let recorder = ShortcutRecorderView()
     private let bindingLabel = NSTextField(labelWithString: "")
+    private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 180),
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 220),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -25,6 +27,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        refreshLaunchAtLoginState()
     }
 
     private func buildContent() {
@@ -52,7 +55,16 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         resetButton.bezelStyle = .rounded
         resetButton.controlSize = .small
 
-        let stack = NSStackView(views: [title, recorder, bindingLabel, hint, resetButton])
+        let separator = NSBox()
+        separator.boxType = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+
+        launchAtLoginCheckbox.title = "Launch Switchr at login"
+        launchAtLoginCheckbox.target = self
+        launchAtLoginCheckbox.action = #selector(toggleLaunchAtLogin)
+        refreshLaunchAtLoginState()
+
+        let stack = NSStackView(views: [title, recorder, bindingLabel, hint, resetButton, separator, launchAtLoginCheckbox])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -67,6 +79,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
 
             recorder.heightAnchor.constraint(equalToConstant: 30),
             recorder.widthAnchor.constraint(equalToConstant: 200),
+            separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
     }
 
@@ -79,6 +92,38 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
     @objc private func resetToDefault() {
         HotkeyStore.shared.resetToDefault()
         refreshBindingLabel()
+    }
+
+    @objc private func toggleLaunchAtLogin(_ sender: NSButton) {
+        do {
+            if sender.state == .on {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = sender.state == .on
+                ? "Couldn't enable launch at login"
+                : "Couldn't disable launch at login"
+            alert.informativeText = """
+                \(error.localizedDescription)
+
+                You can manage this manually in System Settings → General → Login Items.
+                """
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Open Login Items")
+            if alert.runModal() == .alertSecondButtonReturn {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        }
+        refreshLaunchAtLoginState()
+    }
+
+    private func refreshLaunchAtLoginState() {
+        launchAtLoginCheckbox.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
     }
 
     func windowWillClose(_ notification: Notification) {

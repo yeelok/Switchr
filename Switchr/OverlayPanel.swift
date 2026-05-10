@@ -4,12 +4,12 @@ import ApplicationServices
 @MainActor
 final class OverlayPanel {
     private static let width: CGFloat = 280
-    private static let rowHeight: CGFloat = 32
+    private static let rowHeight: CGFloat = 60
     private static let outerPadding: CGFloat = 8
-    private static let cornerRadius: CGFloat = 12
+    private static let cornerRadius: CGFloat = 16
 
     private let panel: NSPanel
-    private let visualEffect: NSVisualEffectView
+    private let background: OverlayBackgroundView
     private let listView: OverlayListView
 
     init() {
@@ -23,34 +23,27 @@ final class OverlayPanel {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.isMovableByWindowBackground = false
         panel.hidesOnDeactivate = false
         panel.becomesKeyOnlyIfNeeded = true
         panel.isReleasedWhenClosed = false
 
-        let visualEffect = NSVisualEffectView(frame: panel.contentLayoutRect)
-        visualEffect.material = .hudWindow
-        visualEffect.blendingMode = .behindWindow
-        visualEffect.state = .active
-        // `maskImage` is the reliable way to round NSVisualEffectView corners —
-        // setting `layer.cornerRadius` alone leaves the private blur subview
-        // unclipped, which paints opaque squares in the corners.
-        visualEffect.maskImage = Self.roundedMaskImage(cornerRadius: Self.cornerRadius)
+        let background = OverlayBackgroundView(cornerRadius: Self.cornerRadius)
 
         let listView = OverlayListView()
         listView.translatesAutoresizingMaskIntoConstraints = false
-        visualEffect.addSubview(listView)
+        background.addSubview(listView)
         NSLayoutConstraint.activate([
-            listView.topAnchor.constraint(equalTo: visualEffect.topAnchor, constant: Self.outerPadding),
-            listView.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor, constant: -Self.outerPadding),
-            listView.leadingAnchor.constraint(equalTo: visualEffect.leadingAnchor, constant: Self.outerPadding),
-            listView.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor, constant: -Self.outerPadding),
+            listView.topAnchor.constraint(equalTo: background.topAnchor, constant: Self.outerPadding),
+            listView.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -Self.outerPadding),
+            listView.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Self.outerPadding),
+            listView.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Self.outerPadding),
         ])
-        panel.contentView = visualEffect
+        panel.contentView = background
 
         self.panel = panel
-        self.visualEffect = visualEffect
+        self.background = background
         self.listView = listView
     }
 
@@ -91,20 +84,6 @@ final class OverlayPanel {
     }
 
     // MARK: - Layout
-
-    /// Builds a stretchable 9-slice rounded rect for `NSVisualEffectView.maskImage`.
-    private static func roundedMaskImage(cornerRadius radius: CGFloat) -> NSImage {
-        let edge = radius * 2 + 1
-        let size = NSSize(width: edge, height: edge)
-        let image = NSImage(size: size, flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        image.resizingMode = .stretch
-        return image
-    }
 
     private func resizeToFit(rowCount: Int) {
         let rows = max(rowCount, 1)
@@ -167,6 +146,47 @@ final class OverlayPanel {
     }
 }
 
+// MARK: - Background
+
+/// Plain rounded fill, no border. Uses a hand-tuned gray that's visibly
+/// distinct from a white desktop in light mode, with a dark-mode counterpart.
+@MainActor
+final class OverlayBackgroundView: NSView {
+    private static let fillColor = NSColor(name: "SwitchrOverlayFill") { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return isDark
+            ? NSColor(white: 0.18, alpha: 1.0)
+            : NSColor(white: 0.90, alpha: 1.0)
+    }
+
+    init(cornerRadius: CGFloat) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = cornerRadius
+        layer?.cornerCurve = .continuous
+        layer?.masksToBounds = true
+        applyFillColor()
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyFillColor()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyFillColor()
+    }
+
+    private func applyFillColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = Self.fillColor.cgColor
+        }
+    }
+}
+
 // MARK: - List view
 
 @MainActor
@@ -216,9 +236,22 @@ final class OverlayListView: NSView {
 
 @MainActor
 final class OverlayRowView: NSView {
+    private static let textColor = NSColor(name: "SwitchrOverlayText") { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return isDark
+            ? NSColor(white: 0.75, alpha: 1.0)
+            : NSColor(white: 0.25, alpha: 1.0)
+    }
+
+    private static let highlightColor = NSColor(name: "SwitchrOverlayHighlight") { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return isDark
+            ? NSColor(white: 0.32, alpha: 1.0)
+            : NSColor(white: 0.78, alpha: 1.0)
+    }
+
     private let highlight = NSView()
     private let nameField = NSTextField(labelWithString: "")
-    private let iconView = NSImageView()
 
     var isSelected: Bool = false {
         didSet { applySelection() }
@@ -234,32 +267,23 @@ final class OverlayRowView: NSView {
         addSubview(highlight)
 
         nameField.stringValue = source.localizedName
-        nameField.font = .systemFont(ofSize: 18)
+        nameField.font = .systemFont(ofSize: 18, weight: .regular)
+        nameField.alignment = .center
         nameField.lineBreakMode = .byTruncatingTail
         nameField.translatesAutoresizingMaskIntoConstraints = false
         addSubview(nameField)
 
-        iconView.image = source.icon
-        iconView.imageScaling = .scaleProportionallyDown
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(iconView)
-
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 60),
 
-            highlight.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            highlight.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            highlight.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            highlight.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
             highlight.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             highlight.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
 
-            nameField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 28),
+            nameField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            nameField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             nameField.centerYAnchor.constraint(equalTo: centerYAnchor),
-            nameField.trailingAnchor.constraint(lessThanOrEqualTo: iconView.leadingAnchor, constant: -16),
-
-            iconView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
-            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 44),
-            iconView.heightAnchor.constraint(equalToConstant: 36),
         ])
 
         applySelection()
@@ -267,13 +291,21 @@ final class OverlayRowView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applySelection()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applySelection()
+    }
+
     private func applySelection() {
-        if isSelected {
-            highlight.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
-            nameField.textColor = .white
-        } else {
-            highlight.layer?.backgroundColor = NSColor.clear.cgColor
-            nameField.textColor = .labelColor
+        let bg: NSColor = isSelected ? Self.highlightColor : .clear
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            highlight.layer?.backgroundColor = bg.cgColor
         }
+        nameField.textColor = Self.textColor
     }
 }

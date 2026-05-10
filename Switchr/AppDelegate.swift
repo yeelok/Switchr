@@ -15,7 +15,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func installMenuBarItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "⌨"
+        if let button = item.button {
+            // Pick any SF Symbol you like — e.g. "keyboard", "globe", "character.bubble",
+            // "command", "globe.asia.australia". Browse with the SF Symbols app.
+            let icon = NSImage(systemSymbolName: "keyboard",
+                               accessibilityDescription: "Switchr")
+            icon?.isTemplate = true
+            button.image = icon
+            button.imagePosition = .imageOnly
+        }
 
         let menu = NSMenu()
         menu.addItem(withTitle: "Toggle Now", action: #selector(toggleNow), keyEquivalent: "")
