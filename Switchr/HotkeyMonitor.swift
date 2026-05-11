@@ -125,14 +125,22 @@ final class HotkeyMonitor {
 
         let binding = HotkeyStore.shared.binding
         let flags = event.flags
-        let modsHeld = flags.contains(binding.modifiers)
+        // Trigger requires an *exact* match of the bound modifier set
+        // (ignoring Shift, which is reserved for reverse-nav), so e.g.
+        // a Cmd+Space binding doesn't fire on Ctrl+Cmd+Space.
+        let modifierMask: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
+        let modsExactMatch =
+            flags.intersection(modifierMask) == binding.modifiers.intersection(modifierMask)
+        // Commit uses the lenient "still held" check so pressing an extra
+        // modifier mid-hold doesn't dismiss the overlay.
+        let bindingModsHeld = flags.contains(binding.modifiers)
 
         switch type {
         case .keyDown:
             let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
             let isAutoRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
 
-            if keyCode == binding.cgKeyCode && modsHeld {
+            if keyCode == binding.cgKeyCode && modsExactMatch {
                 if !isAutoRepeat {
                     if isActive {
                         if flags.contains(kHotkeyInverseModifier) {
@@ -155,7 +163,7 @@ final class HotkeyMonitor {
             }
 
         case .flagsChanged:
-            if isActive && !modsHeld {
+            if isActive && !bindingModsHeld {
                 isActive = false
                 onCommit?()
             }
